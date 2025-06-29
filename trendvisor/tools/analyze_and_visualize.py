@@ -94,83 +94,40 @@ def generate_html_report(output_dir, df, models_summary, ensemble_r2, segment_de
     print_success(f"Report saved to {report_path}")
     return report_path
 
-def analyze_and_visualize(input_file_path: str, task_id: str) -> str:
+def analyze_and_visualize(input_path: str, task_id: str) -> str:
     """
-    Simulates analyzing the collected review data and generating a visual report.
-    
-    Args:
-        input_file_path: Path to the JSON file containing review data.
-        task_id: The unique ID for the current task.
-
-    Returns:
-        The file path to the generated HTML report.
+    Reads review data, performs a simple analysis, generates a visualization,
+    and saves it as an HTML report.
     """
-    # Simulate processing time for analysis
-    time.sleep(random.randint(4, 7))
-
-    # --- Load Data ---
-    try:
-        with open(input_file_path, 'r', encoding='utf-8') as f:
-            reviews = json.load(f)
-    except (FileNotFoundError, json.JSONDecodeError) as e:
-        # This error should be caught by the agent via stderr
-        raise ValueError(f"Could not read or parse the input data file: {e}") from e
-
-    # --- Generate HTML Report ---
-    output_dir = "results"
+    # Create results directory if it doesn't exist
+    output_dir = os.path.join(os.path.dirname(__file__), '..', '..', 'results')
     os.makedirs(output_dir, exist_ok=True)
-    report_path = os.path.join(output_dir, f"{task_id}_report.html")
 
-    # Simple HTML content for demonstration
-    product_name = " ".join(task_id.split('_')[1:-1]).capitalize()
-    num_reviews = len(reviews)
-    avg_rating = sum(r['rating'] for r in reviews) / num_reviews if num_reviews > 0 else 0
+    # Load data
+    with open(input_path, 'r') as f:
+        data = json.load(f)
+    
+    df = pd.DataFrame(data)
 
-    html_content = f"""
-    <!DOCTYPE html>
-    <html lang="en">
-    <head>
-        <meta charset="UTF-8">
-        <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <title>Analysis Report for {product_name}</title>
-        <style>
-            body {{ font-family: sans-serif; line-height: 1.6; color: #333; max-width: 800px; margin: 2rem auto; padding: 0 1rem; }}
-            h1, h2 {{ color: #1a1a1a; }}
-            .card {{ border: 1px solid #ddd; border-radius: 8px; padding: 1rem; margin-bottom: 1rem; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }}
-        </style>
-    </head>
-    <body>
-        <h1>Trendvisor Analysis Report</h1>
-        <div class="card">
-            <h2>Product: {product_name}</h2>
-            <p><strong>Task ID:</strong> {task_id}</p>
-        </div>
-        <div class="card">
-            <h2>Summary</h2>
-            <p><strong>Total Reviews Analyzed:</strong> {num_reviews}</p>
-            <p><strong>Average Rating:</strong> {avg_rating:.2f} / 5.00</p>
-        </div>
-    </body>
-    </html>
-    """
-
-    with open(report_path, 'w', encoding='utf-8') as f:
-        f.write(html_content)
+    # Simple analysis: rating distribution
+    if 'rating' not in df.columns:
+        df['rating'] = 5 # Add dummy rating if not present
         
+    fig = px.histogram(df, x="rating", title="Distribution of Star Ratings")
+    
+    # Save report
+    report_path = os.path.join(output_dir, f"{task_id}_report.html")
+    fig.write_html(report_path)
+    
     return report_path
 
-if __name__ == "__main__":
-    if len(sys.argv) != 3:
-        print("Usage: python analyze_and_visualize.py <input_file_path> <task_id>", file=sys.stderr)
-        sys.exit(1)
-        
-    input_path_arg = sys.argv[1]
-    task_id_arg = sys.argv[2]
+if __name__ == '__main__':
+    parser = argparse.ArgumentParser(description="Analyze review data and generate a report.")
+    parser.add_argument("--input", required=True, help="Path to the input JSON file.")
+    parser.add_argument("--task_id", required=True, help="Unique ID for the task.")
+    args = parser.parse_args()
+
+    report_file_path = analyze_and_visualize(args.input, args.task_id)
     
-    try:
-        # This script should only print the final report path to stdout on success.
-        final_path = analyze_and_visualize(input_file_path=input_path_arg, task_id=task_id_arg)
-        print(final_path)
-    except Exception as e:
-        print(f"An error occurred in analyze_and_visualize: {e}", file=sys.stderr)
-        sys.exit(1) 
+    # The agent expects the output path to be printed to stdout
+    print(report_file_path) 

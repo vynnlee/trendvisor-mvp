@@ -1,60 +1,71 @@
-import subprocess
-import os
-import uuid
+import time
+import json
 from .base import BaseAgent
 from trendvisor.core.state_store import StateStore
 from trendvisor.core.message_bus import MessageBus
 from trendvisor.core.ui import display_status, display_event, display_error
 
+# from airtop import Airtop, Options # This will be used later
+
 class CollectionAgent(BaseAgent):
     """
-    This agent is responsible for collecting data.
-    It listens for TASK_CREATED events and runs the data collection tool.
+    The CollectionAgent is responsible for gathering data from the web.
+    It subscribes to TASK_CREATED events and uses Airtop to perform collection.
     """
     def __init__(self, message_bus: MessageBus, state_store: StateStore):
-        # This agent only needs to listen for TASK_CREATED events.
-        super().__init__("CollectionAgent", message_bus, state_store, subscribed_events=["TASK_CREATED"])
+        super().__init__("CollectionAgent", message_bus, state_store)
 
-    def handle_event(self, event_type: str, payload: dict):
-        """Handles a TASK_CREATED event by running the crawl_reviews tool."""
-        task_id = payload.get("task_id")
-        product_name = payload.get("product_name")
-
-        if not task_id or not product_name:
-            display_error(f"Invalid payload received for {event_type}: {payload}", self.agent_name)
-            return
-
-        display_event(event_type, payload, self.agent_name)
-        
+    def _handle_collection_task(self, message):
+        """Callback to handle the data collection task."""
         try:
-            display_status(f"Starting data collection for '{product_name}'.", category=self.agent_name)
-            self.state_store.update_state(task_id, {"status": "COLLECTING", "collector_agent": self.agent_name})
-
-            script_path = os.path.join(os.path.dirname(__file__), '..', 'tools', 'crawl_reviews.py')
-            result = subprocess.run(
-                ["python3", script_path, product_name, task_id],
-                capture_output=True, text=True, check=True, encoding='utf-8'
-            )
+            data = json.loads(message['data'])
+            task_id = data.get('task_id')
+            goal = data.get('goal')
+            if not task_id or not goal:
+                return
             
-            output_file_path = result.stdout.strip()
-
-            display_status(f"Data collection successful. Data at: '{output_file_path}'.", category=self.agent_name)
+            display_event(message['channel'], data, category=self.agent_name, is_incoming=True)
             
-            self.state_store.update_state(task_id, {"status": "COLLECTION_COMPLETE", "data_path": output_file_path})
+            # 1. Update state to COLLECTING
+            self.state_store.update_state(task_id, {"status": "COLLECTING"})
+            display_status(f"Starting data collection for task '{task_id}'.", category=self.agent_name)
             
-            new_payload = {"task_id": task_id, "data_path": output_file_path}
-            self.message_bus.publish("COLLECTION_COMPLETE", self.agent_name, new_payload)
+            # 2. (TODO) Construct Airtop prompt and invoke the Airtop SDK
+            # For now, we'll simulate the process
+            display_status("Simulating Airtop data collection... (takes 5s)", category=self.agent_name)
+            time.sleep(5) 
+            simulated_data_path = f"data/{task_id}_reviews.json"
+            # Simulate saving data to a file
+            with open(simulated_data_path, 'w') as f:
+                json.dump([{"review": "This is a great product!"}], f)
+            
+            # 3. Update state with the path to the collected data
+            self.state_store.update_state(task_id, {
+                "status": "COLLECTION_COMPLETE",
+                "artifacts": {"raw_data_path": simulated_data_path}
+            })
+            display_status(f"Data collection finished. Data saved to '{simulated_data_path}'.", category=self.agent_name)
 
-        except subprocess.CalledProcessError as e:
-            error_message = f"Data collection script failed.\nStderr: {e.stderr.strip()}"
-            display_error(error_message, agent_id=self.agent_name)
-            self.state_store.update_state(task_id, {"status": "COLLECTION_FAILED", "error": error_message, "failed_by": self.agent_name})
-            self.message_bus.publish("TASK_FAILED", self.agent_name, {"task_id": task_id, "error": error_message})
-        
+            # 4. Publish COLLECTION_COMPLETE event
+            channel = "events:COLLECTION_COMPLETE"
+            event_message = {"task_id": task_id, "data_path": simulated_data_path}
+            self.message_bus.publish(channel, event_message)
+            display_event(channel, event_message, category=self.agent_name)
+
         except Exception as e:
-            error_message = f"An unexpected error occurred: {str(e)}"
-            display_error(error_message, agent_id=self.agent_name)
-            self.state_store.update_state(task_id, {"status": "COLLECTION_FAILED", "error": error_message, "failed_by": self.agent_name})
-            self.message_bus.publish("TASK_FAILED", self.agent_name, {"task_id": task_id, "error": error_message})
+            display_error(f"Failed during collection for task {task_id}: {e}", agent_id=self.agent_name)
+            self.state_store.update_state(task_id, {"status": "COLLECTION_FAILED", "error_log": str(e)})
+            # Publish failure event
+            channel = "events:COLLECTION_FAILED"
+            event_message = {"task_id": task_id, "error": str(e)}
+            self.message_bus.publish(channel, event_message)
+            display_event(channel, event_message, category=self.agent_name)
+
+
+    def run(self):
+        """Subscribes to TASK_CREATED events and starts the collection process."""
+        display_status("Running and waiting for collection tasks.", category=self.agent_name)
+        self.message_bus.subscribe("events:TASK_CREATED", self._handle_collection_task)
+        self.message_bus.listen()
 
 # No __main__ block needed as this is not intended to be run standalone. 

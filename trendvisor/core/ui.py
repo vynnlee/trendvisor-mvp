@@ -5,6 +5,7 @@ from rich.table import Table
 from rich.live import Live
 from rich.spinner import Spinner
 import time
+from typing import Dict, Any
 
 # --- Global Console Object ---
 # All rich output should be channeled through this console object.
@@ -28,48 +29,33 @@ def display_header(title="Trendvisor MVP", subtitle="Autonomous Agent-Based E-co
     console.rule("[bold green]System Initializing...[/bold green]")
 
 
-def display_status(message: str, category: str = "SYSTEM"):
-    """
-    Prints a formatted status update.
-    Example: [SYSTEM] Agents are being initialized...
-    """
-    console.print(f"[bold blue][{category.upper()}][/bold blue] [cyan]{message}[/cyan]")
+def display_status(message: str, category: str):
+    """Displays a status message with a category label."""
+    timestamp = time.strftime('%H:%M:%S')
+    print(f"[{timestamp}][{category.upper()}] {message}")
 
 
-def display_event(event_type: str, data: dict, agent_id: str):
-    """Displays a formatted event log for better traceability."""
-    console.print(
-        f"  [bold yellow]↳ EVENT[/bold yellow] | "
-        f"Agent [bold magenta]{agent_id}[/bold magenta] detected "
-        f"[bold green]'{event_type}'[/bold green] for Task "
-        f"[bold cyan]{data.get('task_id', 'N/A')}[/bold cyan]"
-    )
+def display_event(channel: str, event_data: Dict[str, Any], category: str, is_incoming: bool = False):
+    """Displays an event with its data."""
+    direction = "<- RECV" if is_incoming else "-> SENT"
+    timestamp = time.strftime('%H:%M:%S')
+    task_id = event_data.get('task_id', 'N/A')
+    print(f"[{timestamp}][{category.upper()}] {direction} on channel [{channel}] | Task: {task_id}")
 
 
 def display_final_report(task_id: str, report_path: str):
-    """Displays a prominent panel announcing the final report."""
-    report_panel = Panel(
-        Text.from_markup(
-            f"[bold]Task Complete: [cyan]{task_id}[/cyan][/bold]\n\n"
-            f"The comprehensive analysis report has been generated.\n\n"
-            f"You can find the final output at:\n"
-            f"[bold yellow]📂 {report_path}[/bold yellow]"
-        ),
-        title="[bold green]✓ ANALYSIS COMPLETE[/bold green]",
-        border_style="green",
-        padding=(1, 2)
-    )
-    console.print(report_panel)
+    """Displays the path to the final report."""
+    timestamp = time.strftime('%H:%M:%S')
+    print("\n" + "="*80)
+    print(f"[{timestamp}][SYSTEM] ✅ TASK COMPLETE: {task_id}")
+    print(f"[{timestamp}][SYSTEM] Final report available at: {report_path}")
+    print("="*80 + "\n")
 
 
-def display_error(message: str, agent_id: str = "SYSTEM"):
-    """Displays a prominent error message."""
-    error_panel = Panel(
-        Text(f"An error occurred in agent '{agent_id}':\n\n{message}", style="bold red"),
-        title="[bold red]✗ ERROR[/bold red]",
-        border_style="red"
-    )
-    console.print(error_panel)
+def display_error(message: str, agent_id: str = "System"):
+    """Displays an error message."""
+    timestamp = time.strftime('%H:%M:%S')
+    print(f"[{timestamp}][{agent_id.upper()}] ❌ ERROR: {message}")
 
 
 def display_agent_status(agent_statuses: dict):
